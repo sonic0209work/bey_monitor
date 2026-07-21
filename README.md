@@ -45,12 +45,12 @@ python3 -m pytest tests/ -v
 
 ## 排程（GitHub Actions）
 
-用 `.github/workflows/poll.yml` 每 10 分鐘觸發一次（GitHub Actions cron 最小粒度是 5 分鐘，且偶爾會因平台負載延遲幾分鐘）：
+用 `.github/workflows/poll.yml` 每 5 分鐘觸發一次（GitHub Actions cron 語法的最小粒度就是 5 分鐘，無法再更短；且偶爾會因平台負載延遲幾分鐘，實際體感約 5-10 分鐘）：
 
-- Repo 必須是**公開**的，否則 Actions 分鐘數會很快超過免費額度（10 分鐘一次一個月約 2880 分鐘，遠超私有 repo 免費的 2000 分鐘/月；公開 repo 則不限）。程式碼公開沒關係，通知密鑰是分開存放的。
+- Repo 必須是**公開**的，否則 Actions 分鐘數會很快超過免費額度（5 分鐘一次一個月約 5760 分鐘，遠超私有 repo 免費的 2000 分鐘/月；公開 repo 則不限）。程式碼公開沒關係，通知密鑰是分開存放的。
 - 密鑰存在 GitHub repo 的 Encrypted Secrets（`gh secret set ...`），不會出現在程式碼或 log 裡。
 - 每次執行完會自動把 `state/state.json` commit + push 回 repo，這樣才能記住哪些商品已經看過，同時也讓 repo 保持活躍（避免 GitHub 60 天無活動自動停用排程）。
-- 想調整頻率：修改 `.github/workflows/poll.yml` 裡的 `cron: "*/10 * * * *"`。
+- 想調整頻率：修改 `.github/workflows/poll.yml` 裡的 `cron: "*/5 * * * *"`。
 - 想立即手動觸發一次：到 repo 的 Actions 分頁，選這個 workflow，按 "Run workflow"。
 
 需要在 repo 設定以下 Secrets（哪個沒設，對應通知管道就自動略過）：
