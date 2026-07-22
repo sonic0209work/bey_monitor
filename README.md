@@ -45,12 +45,12 @@ python3 -m pytest tests/ -v
 
 ## 排程（GitHub Actions）
 
-用 `.github/workflows/poll.yml` 每 5 分鐘觸發一次（GitHub Actions cron 語法的最小粒度就是 5 分鐘，無法再更短；且偶爾會因平台負載延遲幾分鐘，實際體感約 5-10 分鐘）：
+用 `.github/workflows/poll.yml` 排程觸發。設定值是 `cron: "0 * * * *"`（整點一次），原因是實測發現：即使把 cron 設成 `*/5` 或 `*/10`，GitHub 對這種低流量公開 repo 的排程觸發還是會降頻到大約 1-1.5 小時一次（這是 GitHub Actions schedule 的已知限制，官方說明本來就寫排程是 best-effort、可能延遲，實務上對低於 1 小時的 cron 幾乎都會被降頻）。所以乾脆把設定值改成如實反映的「整點」，避免設定檔看起來像 5 分鐘、實際卻是 1 小時多的落差。也就是說：**這套系統目前能保證大約每 1-1.5 小時偵測一次上架，不是即時或 5-15 分鐘等級**。
 
-- Repo 必須是**公開**的，否則 Actions 分鐘數會很快超過免費額度（5 分鐘一次一個月約 5760 分鐘，遠超私有 repo 免費的 2000 分鐘/月；公開 repo 則不限）。程式碼公開沒關係，通知密鑰是分開存放的。
+- Repo 是**公開**的：Actions 分鐘數不限額（私有 repo 免費額度只有 2000 分鐘/月）。程式碼公開沒關係，通知密鑰是分開存放的。
 - 密鑰存在 GitHub repo 的 Encrypted Secrets（`gh secret set ...`），不會出現在程式碼或 log 裡。
 - 每次執行完會自動把 `state/state.json` commit + push 回 repo，這樣才能記住哪些商品已經看過，同時也讓 repo 保持活躍（避免 GitHub 60 天無活動自動停用排程）。
-- 想調整頻率：修改 `.github/workflows/poll.yml` 裡的 `cron: "*/5 * * * *"`。
+- 想要更即時（例如真正的 5-15 分鐘），需要換成外部服務（如用免費的外部 cron 服務定時打 GitHub API 觸發 `workflow_dispatch`，或改用 Google Cloud Scheduler + Cloud Run）——目前先接受 GitHub 排程的實際降頻結果。
 - 想立即手動觸發一次：到 repo 的 Actions 分頁，選這個 workflow，按 "Run workflow"。
 
 需要在 repo 設定以下 Secrets（哪個沒設，對應通知管道就自動略過）：

@@ -1,8 +1,12 @@
 name: Poll for restock
 
+# Requested cadence is 5 min, but GitHub throttles low-traffic public repos'
+# scheduled workflows to roughly hourly regardless of the cron value (observed:
+# runs actually land ~60-90 min apart even at */5). Set to hourly to match
+# reality instead of implying a cadence GitHub won't actually deliver.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 permissions:
