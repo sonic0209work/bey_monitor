@@ -1,24 +1,33 @@
 name: Poll for restock
 
-# Requested cadence is 5 min, but GitHub throttles low-traffic public repos'
-# scheduled workflows to roughly hourly regardless of the cron value (observed:
-# runs actually land ~60-90 min apart even at */5). Set to hourly to match
-# reality instead of implying a cadence GitHub won't actually deliver.
+# GitHub throttles the `schedule` trigger itself on low-traffic public repos to
+# roughly hourly no matter how tight the cron is (observed: */5 and */10 both
+# landed ~60-90 min apart in practice). Dispatched runs (workflow_dispatch) do
+# NOT get that treatment - they start almost immediately, same as a manual run.
+#
+# So the real 5-minute cadence comes from the job itself: it loops internally
+# with `sleep 300` for ~5.5h (just under the 6h per-job limit), then re-arms
+# itself by dispatching a fresh run via the API. The `schedule` below (every 6h)
+# is only a safety net in case that self-dispatch chain ever breaks - it's
+# deliberately loose (not every 5/10 min) so it doesn't stack up queued runs
+# behind the long-running loop under the concurrency group.
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: monitor-state
+  group: monitor-loop
   cancel-in-progress: false
 
 jobs:
   poll:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +35,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run monitor
+      - name: Poll every 5 minutes for ~5.5h
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
@@ -34,15 +43,29 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        run: python3 monitor.py
-
-      - name: Commit updated state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/state.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update monitor state"
-            git pull --rebase
-            git push
-          fi
+
+          END=$((SECONDS + 330 * 60))
+          while [ $SECONDS -lt $END ]; do
+            python3 monitor.py || echo "monitor.py failed this round, will retry next loop"
+
+            git add state/state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: update monitor state" || true
+              git pull --rebase || true
+              git push || true
+            fi
+
+            sleep 300
+          done
+
+      - name: Re-arm the next run
+        if: always()
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/poll.yml/dispatches" \
+            -d '{"ref":"main"}'
